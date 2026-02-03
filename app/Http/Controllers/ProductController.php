@@ -15,7 +15,7 @@ class ProductController extends Controller
         $product = Product::all();
 
         return response()->json([
-            "status"   => "success",
+            "status" => "success",
             "products" => $product,
         ], 200);
     }
@@ -23,14 +23,16 @@ class ProductController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
-    {
+
+public function store(Request $request)
+{
+    try {
         $validator = Validator::make($request->all(), [
             'name'   => ['required', 'string', 'max:255'],
             'price'  => ['required', 'numeric', 'min:1'],
             'qty'    => ['required', 'integer', 'min:1'],
-            // 'status' => ['sometime', 'boolean'],
-            // 'image'  => ['nullable', 'image', 'max:2048'],
+            'status' => 'required|boolean',
+            'image'  => ['required', 'image', 'max:2048'],
         ]);
 
         if ($validator->fails()) {
@@ -40,34 +42,32 @@ class ProductController extends Controller
             ], 422);
         }
 
-        try {
-            // $imagePath = null;
+        // UPLOAD IMAGE TO CLOUDINARY
+        $upload = $request->file('image')->storeOnCloudinary('products');
 
-            // if ($request->hasFile('image')) {
-            //     $imagePath = $request->file('image')->store('products', 'public');
-            // }
+        //  SAVE PRODUCT
+        $product = Product::create([
+            'name'              => $request->name,
+            'price'             => $request->price,
+            'qty'               => $request->qty,
+            'status'            => $request->status,
+            'image_url'         => $upload->getSecurePath(),
+            'image_public_id'   => $upload->getPublicId(),
+        ]);
 
-            $product = Product::create([
-                'name'   => $request->name,
-                'price'  => $request->price,
-                'qty'    => $request->qty,
-                // 'status' => $request->status,
-                // 'image'  => $imagePath,
-            ]);
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Product created successfully',
+            'data'    => $product,
+        ], 201);
 
-            return response()->json([
-                'status'  => 'success',
-                'message' => 'Product created successfully',
-                'data'    => $product,
-            ], 201);
-
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => 'error',
-                'error'  => $th->getMessage(),
-            ], 500);
-        }
+    } catch (\Throwable $th) {
+        return response()->json([
+            'status' => 'error',
+            'error'  => $th->getMessage(),
+        ], 500);
     }
+}
 
     /**
      * Display the specified resource.
@@ -77,22 +77,22 @@ class ProductController extends Controller
         try {
             $product = Product::find($id);
 
-            if (! $product) {
+            if (!$product) {
                 return response()->json([
-                    'status'  => 'error',
+                    'status' => 'error',
                     'message' => 'Product not found',
                 ], 404);
             }
 
             return response()->json([
-                'status'  => "success",
+                'status' => "success",
                 "product" => $product,
             ], 200);
 
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => 'error',
-                'error'  => $th->getMessage(),
+                'error' => $th->getMessage(),
             ], 500);
         }
     }
@@ -104,64 +104,84 @@ class ProductController extends Controller
     {
         try {
             $product = Product::findOrFail($id);
-
-
-                $validator = Validator::make($request->all(), [
-                    'name'   => ['sometimes', 'string', 'max:255'],
-                    'price'  => ['sometimes', 'numeric', 'min:1'],
-                    'qty'    => ['sometimes', 'integer', 'min:1'],
-                    'status' => ['sometimes', 'in:1,0'],
-                ]);
-
-
-                if ($validator->fails()) {
-                    return response()->json([
-                        'status' => 'error',
-                        'errors' => $validator->errors(),
-                    ], 422);
-                }
-
-                $product->update([
-                    'name'   => $request->name,
-                    'price'  => $request->price,
-                    'qty'    => $request->qty,
-                    'status' => $request->status,
-                ]);
-
+            if (!$product) {
                 return response()->json([
-                    'status'  => 'success',
-                    'message' => 'Product updated successfully',
-                    'product' => $product,
-                ], 200);
+                    "status" => "error",
+                    "message" => "Product not found"
 
-            } catch (\Throwable $th) {
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'name' => ['sometimes', 'string', 'max:255'],
+                'price' => ['sometimes', 'numeric', 'min:1'],
+                'qty' => ['sometimes', 'integer', 'min:1'],
+                'status' => ['sometimes', 'in:1,0'],
+                'image' => ['sometime', 'string']
+            ]);
+
+
+            if ($validator->fails()) {
                 return response()->json([
                     'status' => 'error',
-                    'error'  => $th->getMessage(),
-                ], 500);
+                    'errors' => $validator->errors(),
+                ], 422);
             }
-            }
-
-            /**
-             * Remove the specified resource from storage.
-             */
-            public function destroy($id)
-    {
-                $product = Product::find($id);
-
-                if (! $product) {
-                    return response()->json([
-                        "status"  => "error",
-                        "message" => "Product Not found",
-                    ], 404);
+            if ($validator->hasFile('image')) {
+                //delete old image first
+                if ($product->image_public_id) {
+                    cloudinary()->destroy($product->image_public_id);
                 }
-
-                $product->delete();
-
-                return response()->json([
-                    'status'  => 'success',
-                    'message' => 'Product deleted successfully',
-                ], 200);
-
+                //upload new image
+                $result = $request->file('image')->storeOnCloudinary('products');
+                $product->image_url = $result->getSecurePath();
+                $product->image_public_id = $result->getPublicId();
             }
+
+            $product->update([
+                'name' => $request->name,
+                'price' => $request->price,
+                'qty' => $request->qty,
+                'status' => $request->status,
+                'image_url' => $product->image_url,
+                'image_public_id' => $product->image_public_id,
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Product updated successfully',
+                'product' => $product,
+            ], 200);
+
+        } catch (\Throwable $th) {
+            return response()->json([
+                'status' => 500,
+                'message' => 'Something went wrong during update',
+                'error' => $th->getMessage(),
+            ], 500);
         }
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy($id)
+    {
+        $product = Product::find($id);
+
+        if (!$product) {
+            return response()->json([
+                "status" => "error",
+                "message" => "Product Not found",
+            ], 404);
+        }
+
+        $product->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Product deleted successfully',
+        ], 200);
+
+    }
+}

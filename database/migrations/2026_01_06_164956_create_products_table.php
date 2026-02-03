@@ -17,7 +17,8 @@ return new class extends Migration
             $table->decimal('price',10,2);
             $table->integer('qty');
             $table->enum('status',[1,0])->default(1);
-            $table->string('image')->nullable();
+            $table->string('image_url');
+            $table->string('image_public_id');
             $table->timestamps();
         });
     }
