@@ -104,7 +104,7 @@ class ProductController extends Controller
     {
         try {
             $product = Product::findOrFail($id);
-            
+
             $validator = Validator::make($request->all(), [
                 'name' => ['sometimes', 'string', 'max:255'],
                 'price' => ['sometimes', 'numeric', 'min:1'],
@@ -174,7 +174,12 @@ class ProductController extends Controller
                 'message' => 'Product Not found',
             ], 404);
         }
+        
+        if ($product->image_public_id) {
+            cloudinary()->destroy($product->image_public_id);
+        }
 
+        // Delete record from database
         $product->delete();
 
         return response()->json([
